@@ -9,6 +9,9 @@
 #include "OpenGL_state.h"
 #include "ViewerData.h"
 
+//#include <igl/OpenGL_convenience.h>
+//#include "../draw_mesh.h"
+
 IGL_INLINE void igl::OpenGL_state::init_buffers()
 {
   // Mesh: Vertex Array Object & Buffer objects
@@ -38,6 +41,8 @@ IGL_INLINE void igl::OpenGL_state::init_buffers()
   glGenBuffers(1, &vbo_points_V_colors);
 
   dirty = ViewerData::DIRTY_ALL;
+
+  quads = false;
 }
 
 IGL_INLINE void igl::OpenGL_state::free_buffers()
@@ -61,12 +66,22 @@ IGL_INLINE void igl::OpenGL_state::free_buffers()
   glDeleteBuffers(1, &vbo_points_V_colors);
 
   glDeleteTextures(1, &vbo_tex);
+
+  quads = false;
 }
 
 IGL_INLINE void igl::OpenGL_state::set_data(const igl::ViewerData &data, bool invert_normals)
 {
+  int corner_F = data.F.cols();
+  if (corner_F == 4) {
+    quads = true;
+  }
+  else {
+    quads = false;
+  }
+
   bool per_corner_uv = (data.F_uv.rows() == data.F.rows());
-  bool per_corner_normals = (data.F_normals.rows() == 3 * data.F.rows());
+  bool per_corner_normals = (data.F_normals.rows() == corner_F * data.F.rows());
 
   dirty |= data.dirty;
 
@@ -107,42 +122,42 @@ IGL_INLINE void igl::OpenGL_state::set_data(const igl::ViewerData &data, bool in
       // Per vertex properties with per corner UVs
       if (dirty & ViewerData::DIRTY_POSITION)
       {
-        V_vbo.resize(3,data.F.rows()*3);
+        V_vbo.resize(corner_F,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_vbo.col(i*3+j) = data.V.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_vbo.col(i*corner_F+j) = data.V.row(data.F(i,j)).transpose().cast<float>();
       }
 
       if (dirty & ViewerData::DIRTY_AMBIENT)
       {
-        V_ambient_vbo.resize(3,data.F.rows()*3);
+        V_ambient_vbo.resize(corner_F,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_ambient_vbo.col (i*3+j) = data.V_material_ambient.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_ambient_vbo.col (i*corner_F+j) = data.V_material_ambient.row(data.F(i,j)).transpose().cast<float>();
       }
 
       if (dirty & ViewerData::DIRTY_DIFFUSE)
       {
-        V_diffuse_vbo.resize(3,data.F.rows()*3);
+        V_diffuse_vbo.resize(corner_F,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_diffuse_vbo.col (i*3+j) = data.V_material_diffuse.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_diffuse_vbo.col (i*corner_F+j) = data.V_material_diffuse.row(data.F(i,j)).transpose().cast<float>();
       }
 
       if (dirty & ViewerData::DIRTY_SPECULAR)
       {
-        V_specular_vbo.resize(3,data.F.rows()*3);
+        V_specular_vbo.resize(corner_F,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_specular_vbo.col(i*3+j) = data.V_material_specular.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_specular_vbo.col(i*corner_F+j) = data.V_material_specular.row(data.F(i,j)).transpose().cast<float>();
       }
 
       if (dirty & ViewerData::DIRTY_NORMAL)
       {
-        V_normals_vbo.resize(3,data.F.rows()*3);
+        V_normals_vbo.resize(corner_F,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_normals_vbo.col (i*3+j) = data.V_normals.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_normals_vbo.col (i*corner_F+j) = data.V_normals.row(data.F(i,j)).transpose().cast<float>();
 
         if (invert_normals)
           V_normals_vbo = -V_normals_vbo;
@@ -150,17 +165,23 @@ IGL_INLINE void igl::OpenGL_state::set_data(const igl::ViewerData &data, bool in
 
       if (dirty & ViewerData::DIRTY_FACE)
       {
-        F_vbo.resize(3,data.F.rows());
-        for (unsigned i=0; i<data.F.rows();++i)
-          F_vbo.col(i) << i*3+0, i*3+1, i*3+2;
+        F_vbo.resize(corner_F,data.F.rows());
+        if (corner_F == 3) {
+          for (unsigned i = 0; i < data.F.rows(); ++i)
+            F_vbo.col(i) << i * corner_F + 0, i * corner_F + 1, i * corner_F + 2;
+        }
+        else if (corner_F == 4) {
+          for (unsigned i = 0; i < data.F.rows(); ++i)
+            F_vbo.col(i) << i * corner_F + 0, i * corner_F + 1, i * corner_F + 2, i * corner_F + 3;
+        }
       }
 
       if (dirty & ViewerData::DIRTY_UV)
       {
-        V_uv_vbo.resize(2,data.F.rows()*3);
+        V_uv_vbo.resize(2,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_uv_vbo.col(i*3+j) = data.V_uv.row(data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_uv_vbo.col(i*corner_F+j) = data.V_uv.row(data.F(i,j)).transpose().cast<float>();
       }
     }
   }
@@ -168,44 +189,44 @@ IGL_INLINE void igl::OpenGL_state::set_data(const igl::ViewerData &data, bool in
   {
     if (dirty & ViewerData::DIRTY_POSITION)
     {
-      V_vbo.resize(3,data.F.rows()*3);
+      V_vbo.resize(corner_F,data.F.rows()*corner_F);
       for (unsigned i=0; i<data.F.rows();++i)
-        for (unsigned j=0;j<3;++j)
-          V_vbo.col(i*3+j) = data.V.row(data.F(i,j)).transpose().cast<float>();
+        for (unsigned j=0;j<corner_F;++j)
+          V_vbo.col(i*corner_F+j) = data.V.row(data.F(i,j)).transpose().cast<float>();
     }
 
     if (dirty & ViewerData::DIRTY_AMBIENT)
     {
-      V_ambient_vbo.resize(3,data.F.rows()*3);
+      V_ambient_vbo.resize(corner_F,data.F.rows()*corner_F);
       for (unsigned i=0; i<data.F.rows();++i)
-        for (unsigned j=0;j<3;++j)
-          V_ambient_vbo.col (i*3+j) = data.F_material_ambient.row(i).transpose().cast<float>();
+        for (unsigned j=0;j<corner_F;++j)
+          V_ambient_vbo.col (i*corner_F+j) = data.F_material_ambient.row(i).transpose().cast<float>();
     }
 
     if (dirty & ViewerData::DIRTY_DIFFUSE)
     {
-      V_diffuse_vbo.resize(3,data.F.rows()*3);
+      V_diffuse_vbo.resize(corner_F,data.F.rows()*corner_F);
       for (unsigned i=0; i<data.F.rows();++i)
-        for (unsigned j=0;j<3;++j)
-          V_diffuse_vbo.col (i*3+j) = data.F_material_diffuse.row(i).transpose().cast<float>();
+        for (unsigned j=0;j<corner_F;++j)
+          V_diffuse_vbo.col (i*corner_F+j) = data.F_material_diffuse.row(i).transpose().cast<float>();
     }
 
     if (dirty & ViewerData::DIRTY_SPECULAR)
     {
-      V_specular_vbo.resize(3,data.F.rows()*3);
+      V_specular_vbo.resize(corner_F,data.F.rows()*corner_F);
       for (unsigned i=0; i<data.F.rows();++i)
-        for (unsigned j=0;j<3;++j)
-          V_specular_vbo.col(i*3+j) = data.F_material_specular.row(i).transpose().cast<float>();
+        for (unsigned j=0;j<corner_F;++j)
+          V_specular_vbo.col(i*corner_F+j) = data.F_material_specular.row(i).transpose().cast<float>();
     }
 
     if (dirty & ViewerData::DIRTY_NORMAL)
     {
-      V_normals_vbo.resize(3,data.F.rows()*3);
+      V_normals_vbo.resize(corner_F,data.F.rows()*corner_F);
       for (unsigned i=0; i<data.F.rows();++i)
-        for (unsigned j=0;j<3;++j)
-          V_normals_vbo.col (i*3+j) =
+        for (unsigned j=0;j<corner_F;++j)
+          V_normals_vbo.col (i*corner_F+j) =
              per_corner_normals ?
-               data.F_normals.row(i*3+j).transpose().cast<float>() :
+               data.F_normals.row(i*corner_F+j).transpose().cast<float>() :
                data.F_normals.row(i).transpose().cast<float>();
 
       if (invert_normals)
@@ -214,17 +235,23 @@ IGL_INLINE void igl::OpenGL_state::set_data(const igl::ViewerData &data, bool in
 
     if (dirty & ViewerData::DIRTY_FACE)
     {
-      F_vbo.resize(3,data.F.rows());
-      for (unsigned i=0; i<data.F.rows();++i)
-        F_vbo.col(i) << i*3+0, i*3+1, i*3+2;
+      F_vbo.resize(corner_F,data.F.rows());
+      if (corner_F == 3) {
+        for (unsigned i = 0; i < data.F.rows(); ++i)
+          F_vbo.col(i) << i * corner_F + 0, i * corner_F + 1, i * corner_F + 2;
+      }
+      else if (corner_F == 4) {
+        for (unsigned i = 0; i < data.F.rows(); ++i)
+          F_vbo.col(i) << i * corner_F + 0, i * corner_F + 1, i * corner_F + 2, i * corner_F + 3;
+      }
     }
 
     if (dirty & ViewerData::DIRTY_UV)
     {
-        V_uv_vbo.resize(2,data.F.rows()*3);
+        V_uv_vbo.resize(2,data.F.rows()*corner_F);
         for (unsigned i=0; i<data.F.rows();++i)
-          for (unsigned j=0;j<3;++j)
-            V_uv_vbo.col(i*3+j) = data.V_uv.row(per_corner_uv ? data.F_uv(i,j) : data.F(i,j)).transpose().cast<float>();
+          for (unsigned j=0;j<corner_F;++j)
+            V_uv_vbo.col(i*corner_F+j) = data.V_uv.row(per_corner_uv ? data.F_uv(i,j) : data.F(i,j)).transpose().cast<float>();
     }
   }
 
@@ -343,7 +370,12 @@ IGL_INLINE void igl::OpenGL_state::draw_mesh(bool solid)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.0, 1.0);
   }
-  glDrawElements(GL_TRIANGLES, 3*F_vbo.cols(), GL_UNSIGNED_INT, 0);
+  if (quads) {
+    glDrawElements(GL_QUADS, 4*F_vbo.cols(), GL_UNSIGNED_INT, 0);
+  }
+  else {
+    glDrawElements(GL_TRIANGLES, 3*F_vbo.cols(), GL_UNSIGNED_INT, 0);
+  }
 
   glDisable(GL_POLYGON_OFFSET_FILL);
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

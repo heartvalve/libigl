@@ -60,6 +60,8 @@ public:
   Eigen::MatrixXf points_V_vbo;
   Eigen::MatrixXf points_V_colors_vbo;
 
+  bool quads;
+
   int tex_u;
   int tex_v;
   Eigen::Matrix<char,Eigen::Dynamic,1> tex;
